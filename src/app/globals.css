@@ -1,0 +1,110 @@
+@import "tailwindcss";
+
+/*
+ * "Cobalt Ledger" palette: cool paper, blue-black ink, one flat cobalt accent.
+ * Cobalt is used flat only (fills, rules, active states), never as a glow, so it stays
+ * clear of the banned indigo look. signal-light is the accent for text on dark ink panels;
+ * amber is the alert colour; danger is crimson so it never reads as the accent.
+ * Hard edges and rules instead of soft shadow cards; Geist for structure, Geist Mono for data.
+ */
+@theme {
+  --color-ink: #0b1220;
+  --color-ink-2: #060a14;
+  --color-signal: #1f4fff;
+  --color-signal-bright: #3d66ff;
+  --color-signal-light: #8aa4ff;
+  --color-signal-soft: #e4eaff;
+  --color-brand: #1f4fff;
+  --color-brand-600: #1638c4;
+  --color-accent: #1f4fff;
+  --color-paper: #f1f3f5;
+  --color-line: #d6dbe1;
+  --color-line-strong: #0b1220;
+  --color-muted: #5a6472;
+  --color-white: #ffffff;
+
+  --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", monospace;
+
+  /* No soft-card aesthetic: radii collapse to hairline-crisp, shadows are removed. */
+  --radius-sm: 0px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --radius-xl: 0px;
+  --shadow-sm: none;
+  --shadow: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-xl: none;
+
+  /* Remap stray Tailwind hues into the system (no purple/indigo anywhere). */
+  --color-teal-50: #e4eaff;
+  --color-teal-100: #cdd8ff;
+  --color-teal-200: #1f4fff;
+  --color-teal-800: #1638c4;
+  --color-teal-900: #0f2790;
+  --color-violet-50: #e8ebf0;
+  --color-violet-200: #0b1220;
+  --color-violet-800: #0b1220;
+  --color-sky-50: #eceff3;
+  --color-sky-200: #b9c2cd;
+  --color-sky-800: #2a3444;
+  --color-sky-900: #0b1220;
+  --color-slate-100: #e8ebf0;
+  --color-slate-500: #5a6472;
+  --color-amber-50: #fff6e2;
+  --color-amber-200: #ffdf99;
+  --color-amber-400: #ffc24d;
+  --color-amber-500: #ffb020;
+  --color-amber-900: #6b4300;
+  --color-red-50: #fbe9ec;
+  --color-red-500: #c2153f;
+  --color-red-600: #a8123a;
+  --color-red-700: #96102f;
+  --color-red-800: #760c25;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
+
+/* Brand motif: asymmetric corners, rounded on the left, square on the right. */
+.btn {
+  @apply inline-flex items-center gap-2 bg-signal px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-signal-bright disabled:opacity-50;
+  border-radius: 14px 0 0 14px;
+}
+.btn-secondary {
+  @apply inline-flex items-center gap-2 border border-ink bg-transparent px-4 py-2 text-sm font-medium text-ink transition-colors hover:bg-ink hover:text-white;
+  border-radius: 14px 0 0 14px;
+}
+.btn-danger {
+  @apply inline-flex items-center gap-2 bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800;
+  border-radius: 14px 0 0 14px;
+}
+.input {
+  @apply w-full border border-line bg-white px-3 py-2 text-sm focus:border-ink focus:outline-none;
+  border-radius: 2px;
+}
+.label {
+  @apply mb-1 block font-mono text-xs font-medium tracking-wide text-muted uppercase;
+}
+/* Panel: flat surface with a hard top rule; no rounded card, no shadow. */
+.card {
+  @apply border border-line border-t-2 border-t-ink bg-white p-5;
+}
+.link {
+  @apply font-medium text-brand underline decoration-signal decoration-2 underline-offset-4 hover:text-ink;
+}
+.eyebrow {
+  @apply font-mono text-xs font-medium tracking-wider text-brand uppercase;
+}
+.data {
+  @apply font-mono tabular-nums;
+}
+.rule {
+  @apply border-t border-line;
+}
+.prose-plain p {
+  @apply mb-3 leading-relaxed;
+}

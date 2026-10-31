@@ -1,0 +1,547 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────── Identity (Auth.js tables) ─────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+
+  accounts      Account[]
+  sessions      Session[]
+  memberships   Membership[]
+  grants        RoleGrant[]
+  notifications Notification[]
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
+// Organiser-approved employee provisioning. Employee = verified @azentio.com identity AND a row here.
+model EmployeeProvision {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  approvedById String?
+  approvedAt   DateTime @default(now())
+}
+
+// ───────────────────────── Tenancy & grants ─────────────────────────
+
+enum OrgType {
+  AZENTIO
+  CLIENT
+}
+
+model Organization {
+  id           String         @id @default(cuid())
+  name         String
+  slug         String         @unique
+  type         OrgType
+  industry     String?
+  region       String?
+  memberships  Membership[]
+  entitlements Entitlement[]
+  invitations  Invitation[]
+}
+
+enum MembershipRole {
+  MEMBER
+  CLIENT_ADMIN
+  EMPLOYEE
+}
+
+enum MembershipStatus {
+  ACTIVE
+  REVOKED
+}
+
+model Membership {
+  id        String           @id @default(cuid())
+  userId    String
+  orgId     String
+  role      MembershipRole
+  status    MembershipStatus @default(ACTIVE)
+  createdAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org       Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, orgId])
+}
+
+// Platform grants are separate from employment and from client-admin membership role.
+enum Grant {
+  PUBLISH_CONTENT
+  MODERATE_LEARNING
+  PRODUCT_OWNER
+  PORTAL_ADMIN
+  SUPPORT_ACCESS
+}
+
+model RoleGrant {
+  id          String    @id @default(cuid())
+  userId      String
+  grant       Grant
+  orgId       String? // SUPPORT_ACCESS is scoped to one client org
+  expiresAt   DateTime?
+  grantedById String?
+  reason      String?
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Invitation {
+  id          String         @id @default(cuid())
+  orgId       String
+  email       String
+  role        MembershipRole
+  tokenHash   String         @unique
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  revokedAt   DateTime?
+  invitedById String
+  createdAt   DateTime       @default(now())
+  org         Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+}
+
+model TermsAcceptance {
+  id         String   @id @default(cuid())
+  userId     String
+  orgId      String
+  version    String
+  acceptedAt DateTime @default(now())
+
+  @@unique([userId, orgId, version])
+}
+
+// ───────────────────────── Catalogue & content ─────────────────────────
+
+model Offering {
+  id            String        @id @default(cuid())
+  slug          String        @unique
+  name          String
+  category      String
+  tagline       String
+  description   String
+  internalNotes String? // employee-only prototype notes; never in public/client DTOs
+  entitlements  Entitlement[]
+}
+
+model Entitlement {
+  id         String       @id @default(cuid())
+  orgId      String
+  offeringId String
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  offering   Offering     @relation(fields: [offeringId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, offeringId])
+}
+
+// Every resource has an explicit audience. There is no "missing = public" fallback.
+enum Audience {
+  PUBLIC
+  EMPLOYEE
+  CLIENTS
+  CLIENT_ORG
+}
+
+enum ContentKind {
+  BANNER
+  INSIGHT
+  VIDEO
+  BROADCAST
+  RECORDING
+  SESSION
+  KNOWLEDGE
+  RELEASE_NOTE
+  EXPERIMENT
+  BRIEFING
+}
+
+model ContentItem {
+  id         String       @id @default(cuid())
+  kind       ContentKind
+  title      String
+  summary    String
+  body       String
+  audience   Audience
+  orgId      String? // required when audience = CLIENT_ORG
+  offeringId String? // when set, client viewers also need an entitlement
+  ownerName  String?
+  reviewDate DateTime?
+  startsAt   DateTime?
+  published  Boolean      @default(true)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  media      MediaAsset[]
+}
+
+model MediaAsset {
+  id        String      @id @default(cuid())
+  contentId String
+  fileName  String
+  mimeType  String
+  path      String // relative to storage/media, never under /public
+  content   ContentItem @relation(fields: [contentId], references: [id], onDelete: Cascade)
+}
+
+// ───────────────────────── Collective learning ─────────────────────────
+
+enum ObsType {
+  MARKET_OBSERVATION
+  EMERGING_TREND
+  PRODUCT_GAP
+  OPERATIONAL_CHALLENGE
+  SUCCESSFUL_PRACTICE
+  IMPROVEMENT_SUGGESTION
+}
+
+enum ObsVisibility {
+  PRIVATE
+  ORG
+}
+
+enum SharingProposal {
+  NONE
+  COMMUNITY
+}
+
+enum ObsStatus {
+  DRAFT
+  SUBMITTED
+  IN_REVIEW
+  RETURNED
+  REJECTED
+  PUBLISHED
+  SUSPENDED
+  WITHDRAWN
+  SUPERSEDED
+}
+
+enum EvidenceType {
+  ANECDOTAL
+  INTERNAL_METRICS
+  CUSTOMER_FEEDBACK
+  MARKET_RESEARCH
+  REGULATORY_CHANGE
+}
+
+enum Confidence {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+// The private source record. Never serialised to the shared feed.
+model Observation {
+  id              String          @id @default(cuid())
+  authorId        String
+  orgId           String
+  type            ObsType
+  title           String
+  body            String
+  offeringId      String
+  industry        String
+  region          String
+  periodStart     DateTime
+  periodEnd       DateTime
+  evidenceType    EvidenceType
+  confidence      Confidence
+  link            String?
+  visibility      ObsVisibility   @default(PRIVATE)
+  sharingProposal SharingProposal @default(NONE)
+  status          ObsStatus       @default(DRAFT)
+  version         Int             @default(1)
+  previousId      String?
+  sensitiveFlags  String[]
+  returnReason    String?
+  submittedAt     DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  consents        Consent[]
+  decisions       ModerationDecision[]
+}
+
+// Four separate permissions, append-only history.
+model Consent {
+  id            String      @id @default(cuid())
+  observationId String
+  store         Boolean
+  publishShared Boolean
+  attribution   Boolean
+  training      Boolean
+  recordedById  String
+  recordedAt    DateTime    @default(now())
+  observation   Observation @relation(fields: [observationId], references: [id], onDelete: Cascade)
+}
+
+enum SharedStatus {
+  PUBLISHED
+  SUSPENDED
+  WITHDRAWN
+  SUPERSEDED
+}
+
+// The approved, de-identified representation. No tenant, author or attachment columns.
+model SharedObservation {
+  id                 String          @id @default(cuid())
+  publicRef          String          @unique
+  version            Int
+  type               ObsType
+  title              String
+  body               String
+  offeringId         String
+  industry           String
+  regionCoarse       String
+  periodLabel        String
+  attributionOrgName String?
+  status             SharedStatus    @default(PUBLISHED)
+  publishedAt        DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  source             SharedSourceLink?
+  themes             ThemeEvidence[]
+  ideas              IdeaEvidence[]
+  reports            Report[]
+  bookmarks          Bookmark[]
+  feedback           SharedFeedback[]
+}
+
+// Moderator-only link back to the private source; used server-side for distinct-org counts.
+model SharedSourceLink {
+  sharedId      String            @id
+  observationId String
+  orgId         String
+  shared        SharedObservation @relation(fields: [sharedId], references: [id], onDelete: Cascade)
+}
+
+model ModerationDecision {
+  id            String      @id @default(cuid())
+  observationId String
+  sharedId      String?
+  moderatorId   String
+  action        String
+  reason        String?
+  reviewerNote  String? // internal; never in client payloads
+  redactions    Json?
+  createdAt     DateTime    @default(now())
+  observation   Observation @relation(fields: [observationId], references: [id], onDelete: Cascade)
+}
+
+enum ReportStatus {
+  OPEN
+  RESOLVED
+}
+
+model Report {
+  id         String            @id @default(cuid())
+  sharedId   String
+  reporterId String
+  reason     String
+  details    String?
+  status     ReportStatus      @default(OPEN)
+  resolution String?
+  createdAt  DateTime          @default(now())
+  shared     SharedObservation @relation(fields: [sharedId], references: [id], onDelete: Cascade)
+}
+
+model Bookmark {
+  userId    String
+  sharedId  String
+  createdAt DateTime          @default(now())
+  shared    SharedObservation @relation(fields: [sharedId], references: [id], onDelete: Cascade)
+
+  @@id([userId, sharedId])
+}
+
+// "Useful" / "needs evidence" quality signals; one per user per item, no leaderboards.
+model SharedFeedback {
+  userId   String
+  sharedId String
+  kind     String
+  shared   SharedObservation @relation(fields: [sharedId], references: [id], onDelete: Cascade)
+
+  @@id([userId, sharedId])
+}
+
+// ───────────────────────── Insights → improvement loop ─────────────────────────
+
+model Theme {
+  id          String          @id @default(cuid())
+  title       String
+  summary     String
+  limitations String
+  offeringId  String?
+  createdById String
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  evidence    ThemeEvidence[]
+  ideas       ImprovementIdea[]
+}
+
+model ThemeEvidence {
+  themeId  String
+  sharedId String
+  theme    Theme             @relation(fields: [themeId], references: [id], onDelete: Cascade)
+  shared   SharedObservation @relation(fields: [sharedId], references: [id], onDelete: Cascade)
+
+  @@id([themeId, sharedId])
+}
+
+enum IdeaStatus {
+  PROPOSED
+  UNDER_REVIEW
+  PLANNED
+  IN_PROGRESS
+  RELEASED
+  NOT_PROCEEDING
+}
+
+model ImprovementIdea {
+  id               String             @id @default(cuid())
+  title            String
+  problem          String
+  offeringId       String
+  proposedOutcome  String
+  ownerTeam        String
+  ownerId          String
+  priority         String // internal prioritisation; never in client DTOs
+  status           IdeaStatus         @default(PROPOSED)
+  publicStatusNote String
+  visibleToClients Boolean            @default(false)
+  themeId          String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  theme            Theme?             @relation(fields: [themeId], references: [id])
+  evidence         IdeaEvidence[]
+  changes          IdeaStatusChange[]
+}
+
+model IdeaEvidence {
+  ideaId   String
+  sharedId String
+  idea     ImprovementIdea   @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  shared   SharedObservation @relation(fields: [sharedId], references: [id], onDelete: Cascade)
+
+  @@id([ideaId, sharedId])
+}
+
+model IdeaStatusChange {
+  id          String          @id @default(cuid())
+  ideaId      String
+  from        IdeaStatus?
+  to          IdeaStatus
+  note        String
+  changedById String
+  at          DateTime        @default(now())
+  idea        ImprovementIdea @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+}
+
+// ───────────────────────── Platform ─────────────────────────
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  title     String
+  body      String
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum OutboxStatus {
+  QUEUED
+  SENT
+  FAILED
+}
+
+// Email is P1: rows are queued idempotently; nothing here means "delivered".
+model Outbox {
+  id             String       @id @default(cuid())
+  idempotencyKey String       @unique
+  channel        String
+  recipient      String
+  subject        String
+  status         OutboxStatus @default(QUEUED)
+  createdAt      DateTime     @default(now())
+}
+
+model AuditEvent {
+  id           String   @id @default(cuid())
+  actorId      String?
+  action       String
+  resourceType String
+  resourceId   String
+  data         Json?
+  at           DateTime @default(now())
+
+  @@index([resourceType, resourceId])
+}
+
+model PlaygroundRun {
+  id         String   @id @default(cuid())
+  userId     String
+  orgId      String?
+  scenarioId String
+  inputs     Json
+  outputs    Json
+  feedback   Json?
+  createdAt  DateTime @default(now())
+}
+
+model DemoRequest {
+  id           String   @id @default(cuid())
+  name         String
+  company      String
+  email        String
+  offeringSlug String?
+  message      String
+  createdAt    DateTime @default(now())
+}
+
+model EventRegistration {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  team      String?
+  eventSlug String
+  createdAt DateTime @default(now())
+}

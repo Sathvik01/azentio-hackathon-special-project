@@ -1,0 +1,32 @@
+﻿name: azentio-portal
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: azentio
+      POSTGRES_PASSWORD: azentio
+      POSTGRES_DB: azentio
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U azentio"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "1025:1025" # SMTP
+      - "8025:8025" # Inbox UI
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:
